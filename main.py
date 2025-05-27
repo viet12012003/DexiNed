@@ -4,6 +4,9 @@ from __future__ import print_function
 import argparse
 import os
 import time, platform
+from skimage import io
+from sklearn.metrics import precision_recall_curve, f1_score, auc
+import matplotlib.pyplot as plt
 
 import cv2
 import torch.optim as optim
@@ -109,7 +112,7 @@ def validate_one_epoch(epoch, dataloader, model, device, output_dir, arg=None):
                                      arg=arg)
 
 
-def my_test(checkpoint_path, dataloader, model, device, output_dir, args):
+def test(checkpoint_path, dataloader, model, device, output_dir, args):
     if not os.path.isfile(checkpoint_path):
         raise FileNotFoundError(
             f"Checkpoint filte note found: {checkpoint_path}")
@@ -151,7 +154,9 @@ def my_test(checkpoint_path, dataloader, model, device, output_dir, args):
     print("******** Testing finished in", args.test_data, "dataset. *****")
     print("FPS: %f.4" % (len(dataloader)/total_duration))
 
-def my_testPich(checkpoint_path, dataloader, model, device, output_dir, args):
+def testPich(checkpoint_path, dataloader, model, device, output_dir, args):
+    """dataloader: tai du lieu tu dataset_val theo tung anh
+    output_dir: result"""
     # a test model plus the interganged channels
     if not os.path.isfile(checkpoint_path):
         raise FileNotFoundError(
@@ -197,15 +202,15 @@ def parse_args():
     parser = argparse.ArgumentParser(description='DexiNed trainer.')
     parser.add_argument('--choose_test_data',
                         type=int,
-                        default=-1,
+                        default=1,
                         help='Already set the dataset for testing choice: 0 - 8')
     # ----------- test -------0--
 
 
     TEST_DATA = DATASET_NAMES[parser.parse_args().choose_test_data] # max 8
     test_inf = dataset_info(TEST_DATA, is_linux=IS_LINUX)
-    test_dir = test_inf['data_dir']
-    is_testing =False#  current test -352-SM-NewGT-2AugmenPublish
+    test_dir = test_inf['data_dir'] # duong dan toi dataset test
+    is_testing =True#  current test -352-SM-NewGT-2AugmenPublish
 
     # Training settings
     TRAIN_DATA = DATASET_NAMES[0] # BIPED=0, MDBD=6
@@ -220,11 +225,10 @@ def parse_args():
                         help='the path to the directory with the input data.')
     parser.add_argument('--input_val_dir',
                         type=str,
-                        default=test_inf['data_dir'],
+                        default=test_inf['data_dir'], # duong dan toi input cho validation
                         help='the path to the directory with the input data for validation.')
     parser.add_argument('--output_dir',
                         type=str,
-                        # default='checkpoints',
                         default=r'C:\Codes\DexiNed\checkpoints',
                         help='the path to output the results.')
     parser.add_argument('--train_data',
@@ -258,7 +262,7 @@ def parse_args():
                         help='use previous trained data')  # Just for test
     parser.add_argument('--checkpoint_data',
                         type=str,
-                        default=r'10/10_model.pth',# 4 6 7 9 14
+                        default='10/10_model.pth',# 4 6 7 9 14
                         help='Checkpoint path from which to restore model weights from.')
     parser.add_argument('--test_img_width',
                         type=int,
@@ -323,10 +327,64 @@ def parse_args():
                         type=bool,
                         help='If true crop training images, else resize images to match image width and height.')
     parser.add_argument('--mean_pixel_values',
-                        default=np.array([103.939,116.779,123.68, 137.86], dtype=np.float32),
+                        default=[103.939,116.779,123.68, 137.86],
                         type=float)  # [103.939,116.779,123.68] [104.00699, 116.66877, 122.67892]
     args = parser.parse_args()
     return args
+
+def calculate_ods_from_folders(pred_folder, gt_folder, file_ext_pred='.png', file_ext_gt='.png'):
+    """
+    Tính ODS (Optimal Dataset Scale) từ thư mục chứa ảnh dự đoán và GT.
+
+    Parameters:
+        pred_folder (str): Đường dẫn tới thư mục chứa ảnh dự đoán (giá trị float [0,1])
+        gt_folder (str): Đường dẫn tới thư mục chứa ảnh GT (nhị phân)
+        file_ext_pred (str): Phần mở rộng ảnh dự đoán (mặc định '.png')
+        file_ext_gt (str): Phần mở rộng ảnh GT (mặc định '.png')
+
+    Returns:
+        best_f1 (float): F1-score tốt nhất (ODS)
+        best_thresh (float): Ngưỡng tốt nhất tương ứng
+    """
+    pred_files = sorted([f for f in os.listdir(pred_folder) if f.endswith(file_ext_pred)])
+    gt_files = sorted([f for f in os.listdir(gt_folder) if f.endswith(file_ext_gt)])
+
+    assert len(pred_files) == len(gt_files), "Số lượng ảnh dự đoán và GT không khớp!"
+
+    all_preds = []
+    all_gts = []
+
+    for pred_file, gt_file in zip(pred_files, gt_files):
+        pred_path = os.path.join(pred_folder, pred_file)
+        gt_path = os.path.join(gt_folder, gt_file)
+
+        pred = cv2.imread(pred_path, cv2.IMREAD_GRAYSCALE)
+        gt = cv2.imread(gt_path, cv2.IMREAD_GRAYSCALE)
+
+        if pred is None or gt is None:
+            print(f"Bỏ qua ảnh bị lỗi: {pred_file} / {gt_file}")
+            continue
+
+        # Normalize prediction [0, 255] → [0, 1]
+        pred = pred.astype(np.float32) / 255.0
+        pred = 1.0 - pred
+
+        # Convert GT to binary mask (0/1)
+        gt = (gt > 127).astype(np.uint8)
+
+        all_preds.extend(pred.flatten())
+        all_gts.extend(gt.flatten())
+
+    all_preds = np.array(all_preds)
+    all_gts = np.array(all_gts)
+
+    precision, recall, thresholds = precision_recall_curve(all_gts, all_preds)
+    f1_scores = 2 * precision * recall / (precision + recall + 1e-8)
+    best_idx = np.argmax(f1_scores)
+    best_f1 = f1_scores[best_idx]
+    best_thresh = thresholds[best_idx] if best_idx < len(thresholds) else 1.0
+
+    return best_f1, best_thresh
 
 
 def main(args):
@@ -338,9 +396,10 @@ def main(args):
     # Tensorboard summary writer
 
     tb_writer = None
-    training_dir = os.path.join(args.output_dir,args.train_data)
+    training_dir = os.path.join(args.output_dir,args.train_data)     # output_dir la duong dan toi checkpoints,
+                                                                     # train_data la DATASET_NAME[0] = BIPED
     os.makedirs(training_dir,exist_ok=True)
-    checkpoint_path = os.path.join(args.output_dir, args.train_data, args.checkpoint_data)
+    checkpoint_path = os.path.join(args.output_dir, args.train_data, args.checkpoint_data)  # checkpoint_data la 10/10_model.pth
     if args.tensorboard and not args.is_testing:
         from torch.utils.tensorboard import SummaryWriter # for torch 1.4 or greather
         tb_writer = SummaryWriter(log_dir=training_dir)
@@ -381,7 +440,7 @@ def main(args):
                                       shuffle=True,
                                       num_workers=args.workers)
 
-    dataset_val = TestDataset(args.input_val_dir,
+    dataset_val = TestDataset(args.input_val_dir,  # duong dan toi dataset
                               test_data=args.test_data,
                               img_width=args.test_img_width,
                               img_height=args.test_img_height,
@@ -392,23 +451,29 @@ def main(args):
     dataloader_val = DataLoader(dataset_val,
                                 batch_size=1,
                                 shuffle=False,
-                                num_workers=args.workers)
+                                num_workers=args.workers)  # So tien trinh tai du lieu song song (16)
     # Testing
-    if args.is_testing:
+    if args.is_testing: # Mac dinh la True
+    #
+    #     output_dir = os.path.join(args.res_dir, args.train_data+"2"+ args.test_data)  # result\BIPED2CLASSIC
+    #     print(f"output_dir: {output_dir}")
+    #     if args.double_img: # mac dinh la False
+    #         # predict twice an image changing channels, then mix those results
+    #         testPich(checkpoint_path, dataloader_val, model, device, output_dir, args)
+    #     else:
+    #         test(checkpoint_path, dataloader_val, model, device, output_dir, args)
+    #
+    #     num_param = count_parameters(model)
+    #     print('-------------------------------------------------------')
+    #     print('DexiNed # of Parameters:')
+    #     print(num_param)
+    #     print('-------------------------------------------------------')
 
-        output_dir = os.path.join(args.res_dir, args.train_data+"2"+ args.test_data)
-        print(f"output_dir: {output_dir}")
-        if args.double_img:
-            # predict twice an image changing channels, then mix those results
-            my_testPich(checkpoint_path, dataloader_val, model, device, output_dir, args)
-        else:
-            my_test(checkpoint_path, dataloader_val, model, device, output_dir, args)
+        pred_dir = r"C:\Codes\DexiNed\result\BIPED2BSDS\fused"
+        gt_dir = r"C:\Codes\DexiNed\result\BIPED2BSDS\label"
 
-        num_param = count_parameters(model)
-        print('-------------------------------------------------------')
-        print('DexiNed # of Parameters:')
-        print(num_param)
-        print('-------------------------------------------------------')
+        ods_f1, threshold = calculate_ods_from_folders(pred_dir, gt_dir)
+        print(f"ODS F1-score: {ods_f1:.3f}, Threshold: {threshold:.2f}")
         return
 
     criterion = bdcn_loss2 # hed_loss2 #bdcn_loss2
@@ -425,9 +490,9 @@ def main(args):
         if epoch%7==0:
 
             seed = seed+1000
-            np.random.seed(seed)
-            torch.manual_seed(seed)
-            torch.cuda.manual_seed(seed)
+            np.random.seed(seed) # Dat lai seed cho numpy
+            torch.manual_seed(seed) # Dat lai seed cho torch tren CPU
+            torch.cuda.manual_seed(seed) # Dat lai seed cho torch tren GPU
             print("------ Random seed applied-------------")
         # Create output directories
         if adjust_lr is not None:
