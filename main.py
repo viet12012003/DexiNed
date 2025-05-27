@@ -109,7 +109,7 @@ def validate_one_epoch(epoch, dataloader, model, device, output_dir, arg=None):
                                      arg=arg)
 
 
-def test(checkpoint_path, dataloader, model, device, output_dir, args):
+def my_test(checkpoint_path, dataloader, model, device, output_dir, args):
     if not os.path.isfile(checkpoint_path):
         raise FileNotFoundError(
             f"Checkpoint filte note found: {checkpoint_path}")
@@ -151,7 +151,7 @@ def test(checkpoint_path, dataloader, model, device, output_dir, args):
     print("******** Testing finished in", args.test_data, "dataset. *****")
     print("FPS: %f.4" % (len(dataloader)/total_duration))
 
-def testPich(checkpoint_path, dataloader, model, device, output_dir, args):
+def my_testPich(checkpoint_path, dataloader, model, device, output_dir, args):
     # a test model plus the interganged channels
     if not os.path.isfile(checkpoint_path):
         raise FileNotFoundError(
@@ -205,7 +205,7 @@ def parse_args():
     TEST_DATA = DATASET_NAMES[parser.parse_args().choose_test_data] # max 8
     test_inf = dataset_info(TEST_DATA, is_linux=IS_LINUX)
     test_dir = test_inf['data_dir']
-    is_testing =True#  current test -352-SM-NewGT-2AugmenPublish
+    is_testing =False#  current test -352-SM-NewGT-2AugmenPublish
 
     # Training settings
     TRAIN_DATA = DATASET_NAMES[0] # BIPED=0, MDBD=6
@@ -224,7 +224,8 @@ def parse_args():
                         help='the path to the directory with the input data for validation.')
     parser.add_argument('--output_dir',
                         type=str,
-                        default='checkpoints',
+                        # default='checkpoints',
+                        default=r'C:\Codes\DexiNed\checkpoints',
                         help='the path to output the results.')
     parser.add_argument('--train_data',
                         type=str,
@@ -257,7 +258,7 @@ def parse_args():
                         help='use previous trained data')  # Just for test
     parser.add_argument('--checkpoint_data',
                         type=str,
-                        default='10/10_model.pth',# 4 6 7 9 14
+                        default=r'10/10_model.pth',# 4 6 7 9 14
                         help='Checkpoint path from which to restore model weights from.')
     parser.add_argument('--test_img_width',
                         type=int,
@@ -322,7 +323,7 @@ def parse_args():
                         type=bool,
                         help='If true crop training images, else resize images to match image width and height.')
     parser.add_argument('--mean_pixel_values',
-                        default=[103.939,116.779,123.68, 137.86],
+                        default=np.array([103.939,116.779,123.68, 137.86], dtype=np.float32),
                         type=float)  # [103.939,116.779,123.68] [104.00699, 116.66877, 122.67892]
     args = parser.parse_args()
     return args
@@ -399,9 +400,9 @@ def main(args):
         print(f"output_dir: {output_dir}")
         if args.double_img:
             # predict twice an image changing channels, then mix those results
-            testPich(checkpoint_path, dataloader_val, model, device, output_dir, args)
+            my_testPich(checkpoint_path, dataloader_val, model, device, output_dir, args)
         else:
-            test(checkpoint_path, dataloader_val, model, device, output_dir, args)
+            my_test(checkpoint_path, dataloader_val, model, device, output_dir, args)
 
         num_param = count_parameters(model)
         print('-------------------------------------------------------')

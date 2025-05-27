@@ -275,8 +275,8 @@ def augment_data(args):
     # **************** training data ************************#
     if data_for=='train' and not args.use_nir:
         base_dataset_dir = args.dataset_dir.lower() + args.train_dataset + '/edges'
-        GT_dir = os.path.join(base_dataset_dir, 'edge_maps/train/rgbr/aug')
-        X_dir = os.path.join(base_dataset_dir, 'imgs/train/rgbr/aug')
+        GT_dir = os.path.join(base_dataset_dir, 'edge_maps/train/rgbr/real')
+        X_dir = os.path.join(base_dataset_dir, 'imgs/train/rgbr/real')
         # this implementation is just for BIPED dataset
         gt_list = os.listdir(os.path.join(GT_dir,'real'))  #
         gt_list.sort()
@@ -693,7 +693,7 @@ def augment_data(args):
 
         if data_for == 'train':
             base_dataset_dir = args.dataset_dir + args.train_dataset + '/edges'
-            X_dir = os.path.join(base_dataset_dir, 'imgs/train/nir/aug')
+            X_dir = os.path.join(base_dataset_dir, 'imgs/train/nir/real')
 
             x_list = os.listdir(os.path.join(X_dir, 'real'))
             x_list.sort()

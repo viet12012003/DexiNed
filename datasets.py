@@ -144,7 +144,7 @@ def dataset_info(dataset_name, is_linux=True):
                       'img_width': 1280,  # 1280
                       'test_list': 'test_pair.lst',
                       'train_list': 'train_rgb.lst',
-                      'data_dir': 'C:/Users/xavysp/dataset/BIPED',  # WIN: '../.../dataset/BIPED/edges'
+                      'data_dir': r'C:\Codes\DexiNed\dataset_lists\BIPED',  # WIN: '../.../dataset/BIPED/edges'
                       'yita': 0.5},
             'CLASSIC': {'img_height': 512,
                         'img_width': 512,
@@ -186,7 +186,10 @@ class TestDataset(Dataset):
         self.img_width = img_width
         self.data_index = self._build_index()
 
-        print(f"mean_bgr: {self.mean_bgr}")
+        self.mean_bgr = self.mean_bgr[None, None, :]
+        print("mean_bgr:", self.mean_bgr)  # Kiểm tra giá trị
+        print("mean_bgr type:", type(self.mean_bgr))  # Đảm bảo là numpy.ndarray
+        print("mean_bgr shape:", self.mean_bgr.shape)
 
     def _build_index(self):
         sample_indices = []
@@ -296,9 +299,11 @@ class TestDataset(Dataset):
         # if self.yita is not None:
         #     gt[gt >= self.yita] = 1
         img = np.array(img, dtype=np.float32)
+        print(img.shape)
         # if self.rgb:
         #     img = img[:, :, ::-1]  # RGB->BGR
         # img=cv2.resize(img, (400, 464))
+        print(f"Lan 1 {self.mean_bgr.shape}")
         img -= self.mean_bgr
         img = img.transpose((2, 0, 1))
         img = torch.from_numpy(img.copy()).float()
@@ -319,7 +324,7 @@ class TestDataset(Dataset):
 class BipedDataset(Dataset):
     train_modes = ['train', 'test', ]
     dataset_types = ['rgbr', ]
-    data_types = ['aug', ]
+    data_types = ['real', ]
 
     def __init__(self,
                  data_root,
@@ -336,7 +341,7 @@ class BipedDataset(Dataset):
         self.data_root = data_root
         self.train_mode = train_mode
         self.dataset_type = dataset_type
-        self.data_type = 'aug'  # be aware that this might change in the future
+        self.data_type = 'real'  # be aware that this might change in the future
         self.img_height = img_height
         self.img_width = img_width
         self.mean_bgr = mean_bgr
@@ -344,6 +349,7 @@ class BipedDataset(Dataset):
         self.arg = arg
 
         self.data_index = self._build_index()
+        self.mean_bgr = np.array(mean_bgr, dtype=np.float32).reshape((1, 1, 3))
 
     def _build_index(self):
         assert self.train_mode in self.train_modes, self.train_mode
@@ -367,7 +373,7 @@ class BipedDataset(Dataset):
 
             for directory_name in os.listdir(images_path):
                 image_directories = os.path.join(images_path, directory_name)
-                for file_name_ext in os.listdir(image_directories):
+                for file_name_ext in os.listdir(images_path):
                     file_name = os.path.splitext(file_name_ext)[0]
                     sample_indices.append(
                         (os.path.join(images_path, directory_name, file_name + '.jpg'),
@@ -420,8 +426,10 @@ class BipedDataset(Dataset):
 
         gt /= 255. # for DexiNed input and BDCN
 
+
+        print(f"Lan 2 {self.mean_bgr.shape}")
         img = np.array(img, dtype=np.float32)
-        img -= self.mean_bgr
+        img = img - self.mean_bgr
         i_h, i_w,_ = img.shape
         # data = []
         # if self.scale is not None:
