@@ -202,7 +202,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='DexiNed trainer.')
     parser.add_argument('--choose_test_data',
                         type=int,
-                        default=1,
+                        default=0,
                         help='Already set the dataset for testing choice: 0 - 8')
     # ----------- test -------0--
 
@@ -332,59 +332,96 @@ def parse_args():
     args = parser.parse_args()
     return args
 
-def calculate_ods_from_folders(pred_folder, gt_folder, file_ext_pred='.png', file_ext_gt='.png'):
-    """
-    Tính ODS (Optimal Dataset Scale) từ thư mục chứa ảnh dự đoán và GT.
+def calculate_ods_ois(pred_folder, gt_folder, thresholds=np.linspace(0.0, 1.0, 100), distance=10):
+    pred_files = sorted([f for f in os.listdir(pred_folder) if f.endswith(('.png', '.jpg'))])
+    gt_files = sorted([f for f in os.listdir(gt_folder) if f.endswith('.png')])
+    print(len(pred_files), len(gt_files))
+    assert len(pred_files) == len(gt_files)
 
-    Parameters:
-        pred_folder (str): Đường dẫn tới thư mục chứa ảnh dự đoán (giá trị float [0,1])
-        gt_folder (str): Đường dẫn tới thư mục chứa ảnh GT (nhị phân)
-        file_ext_pred (str): Phần mở rộng ảnh dự đoán (mặc định '.png')
-        file_ext_gt (str): Phần mở rộng ảnh GT (mặc định '.png')
+    all_precisions = []
+    all_recalls = []
 
-    Returns:
-        best_f1 (float): F1-score tốt nhất (ODS)
-        best_thresh (float): Ngưỡng tốt nhất tương ứng
-    """
-    pred_files = sorted([f for f in os.listdir(pred_folder) if f.endswith(file_ext_pred)])
-    gt_files = sorted([f for f in os.listdir(gt_folder) if f.endswith(file_ext_gt)])
+    for thresh in thresholds:
+        tps, fps, fns = 0, 0, 0
+        for pred_file, gt_file in zip(pred_files, gt_files):
+            pred = cv2.imread(os.path.join(pred_folder, pred_file), cv2.IMREAD_GRAYSCALE)
+            gt = cv2.imread(os.path.join(gt_folder, gt_file), cv2.IMREAD_GRAYSCALE)
+            if pred is None or gt is None:
+                continue
 
-    assert len(pred_files) == len(gt_files), "Số lượng ảnh dự đoán và GT không khớp!"
+            pred = pred.astype(np.float32) / 255.0
+            pred = (1.0 - pred) > thresh  # nhị phân hóa theo ngưỡng
+            gt = (gt > 127).astype(np.uint8)
 
-    all_preds = []
-    all_gts = []
+            # Dilation để hỗ trợ matching khoảng cách
+            kernel = np.ones((2 * distance + 1, 2 * distance + 1), np.uint8)
+            gt_dilated = cv2.dilate(gt, kernel)
 
-    for pred_file, gt_file in zip(pred_files, gt_files):
-        pred_path = os.path.join(pred_folder, pred_file)
-        gt_path = os.path.join(gt_folder, gt_file)
+            # TP = pred đúng vị trí với gt (cho phép dịch vài pixel)
+            tp = np.sum(pred & (gt_dilated == 1))
+            fp = np.sum(pred & (gt_dilated == 0))
+            fn = np.sum((gt == 1) & (cv2.dilate(pred.astype(np.uint8), kernel) == 0))
 
-        pred = cv2.imread(pred_path, cv2.IMREAD_GRAYSCALE)
-        gt = cv2.imread(gt_path, cv2.IMREAD_GRAYSCALE)
+            tps += tp
+            fps += fp
+            fns += fn
 
-        if pred is None or gt is None:
-            print(f"Bỏ qua ảnh bị lỗi: {pred_file} / {gt_file}")
-            continue
+        precision = tps / (tps + fps + 1e-8)
+        recall = tps / (tps + fns + 1e-8)
+        all_precisions.append(precision)
+        all_recalls.append(recall)
 
-        # Normalize prediction [0, 255] → [0, 1]
-        pred = pred.astype(np.float32) / 255.0
-        pred = 1.0 - pred
-
-        # Convert GT to binary mask (0/1)
-        gt = (gt > 127).astype(np.uint8)
-
-        all_preds.extend(pred.flatten())
-        all_gts.extend(gt.flatten())
-
-    all_preds = np.array(all_preds)
-    all_gts = np.array(all_gts)
-
-    precision, recall, thresholds = precision_recall_curve(all_gts, all_preds)
-    f1_scores = 2 * precision * recall / (precision + recall + 1e-8)
+    all_precisions = np.array(all_precisions)
+    all_recalls = np.array(all_recalls)
+    f1_scores = 2 * all_precisions * all_recalls / (all_precisions + all_recalls + 1e-8)
     best_idx = np.argmax(f1_scores)
-    best_f1 = f1_scores[best_idx]
-    best_thresh = thresholds[best_idx] if best_idx < len(thresholds) else 1.0
+    return f1_scores[best_idx], thresholds[best_idx], np.mean(f1_scores)
 
-    return best_f1, best_thresh
+
+def calculate_ap(pred_folder, gt_folder, thresholds=np.linspace(0.0, 1.0, 100), distance=10):
+    pred_files = sorted([f for f in os.listdir(pred_folder) if f.endswith(('.png', '.jpg'))])
+    gt_files = sorted([f for f in os.listdir(gt_folder) if f.endswith('.png')])
+    assert len(pred_files) == len(gt_files)
+
+    all_precisions = []
+    all_recalls = []
+
+    for thresh in thresholds:
+        tps, fps, fns = 0, 0, 0
+        for pred_file, gt_file in zip(pred_files, gt_files):
+            pred = cv2.imread(os.path.join(pred_folder, pred_file), cv2.IMREAD_GRAYSCALE)
+            gt = cv2.imread(os.path.join(gt_folder, gt_file), cv2.IMREAD_GRAYSCALE)
+            if pred is None or gt is None:
+                continue
+
+            pred = pred.astype(np.float32) / 255.0
+            pred = (1.0 - pred) > thresh  # Binary threshold
+            gt = (gt > 127).astype(np.uint8)
+
+            kernel = np.ones((2 * distance + 1, 2 * distance + 1), np.uint8)
+            gt_dilated = cv2.dilate(gt, kernel)
+
+            tp = np.sum(pred & (gt_dilated == 1))
+            fp = np.sum(pred & (gt_dilated == 0))
+            fn = np.sum((gt == 1) & (cv2.dilate(pred.astype(np.uint8), kernel) == 0))
+
+            tps += tp
+            fps += fp
+            fns += fn
+
+        precision = tps / (tps + fps + 1e-8)
+        recall = tps / (tps + fns + 1e-8)
+        all_precisions.append(precision)
+        all_recalls.append(recall)
+
+    # Sort recall for monotonicity
+    sorted_indices = np.argsort(all_recalls)
+    all_recalls = np.array(all_recalls)[sorted_indices]
+    all_precisions = np.array(all_precisions)[sorted_indices]
+
+    # Compute AP using the trapezoidal rule
+    ap = np.trapz(all_precisions, all_recalls)
+    return ap
 
 
 def main(args):
@@ -454,26 +491,40 @@ def main(args):
                                 num_workers=args.workers)  # So tien trinh tai du lieu song song (16)
     # Testing
     if args.is_testing: # Mac dinh la True
-    #
-    #     output_dir = os.path.join(args.res_dir, args.train_data+"2"+ args.test_data)  # result\BIPED2CLASSIC
-    #     print(f"output_dir: {output_dir}")
-    #     if args.double_img: # mac dinh la False
-    #         # predict twice an image changing channels, then mix those results
-    #         testPich(checkpoint_path, dataloader_val, model, device, output_dir, args)
-    #     else:
-    #         test(checkpoint_path, dataloader_val, model, device, output_dir, args)
-    #
-    #     num_param = count_parameters(model)
-    #     print('-------------------------------------------------------')
-    #     print('DexiNed # of Parameters:')
-    #     print(num_param)
-    #     print('-------------------------------------------------------')
+        #
+        # output_dir = os.path.join(args.res_dir, args.train_data+"2"+ args.test_data)  # result\BIPED2CLASSIC
+        # print(f"output_dir: {output_dir}")
+        # if args.double_img: # mac dinh la False
+        #     # predict twice an image changing channels, then mix those results
+        #     testPich(checkpoint_path, dataloader_val, model, device, output_dir, args)
+        # else:
+        #     test(checkpoint_path, dataloader_val, model, device, output_dir, args)
+        #
+        # num_param = count_parameters(model)
+        # print('-------------------------------------------------------')
+        # print('DexiNed # of Parameters:')
+        # print(num_param)
+        # print('-------------------------------------------------------')
 
-        pred_dir = r"C:\Codes\DexiNed\result\BIPED2BSDS\fused"
+        # Danh gia mang DexiNed tren data BIPED
+        # pred_dir = r"C:\Codes\DexiNed\result\BIPED2BIPED\fused"
+        # gt_dir = r"C:\Codes\DexiNed\result\BIPED2BIPED\label"
+
+        # Danh gia mang DexiNed tren data BSDS
+        # pred_dir = r"C:\Codes\DexiNed\result\BIPED2BSDS\fused"
+        # gt_dir = r"C:\Codes\DexiNed\result\BIPED2BSDS\label"
+
+        # Danh gia mang DexiNed tren data filter
+        pred_dir = r"C:\Codes\DexiNed\result\BSDS_filtered\Roberts"
         gt_dir = r"C:\Codes\DexiNed\result\BIPED2BSDS\label"
 
-        ods_f1, threshold = calculate_ods_from_folders(pred_dir, gt_dir)
-        print(f"ODS F1-score: {ods_f1:.3f}, Threshold: {threshold:.2f}")
+        ods_f1, threshold, ois_f1 = calculate_ods_ois(pred_dir, gt_dir, distance=10)
+        # ods_f1, threshold, ois_f1 = calculate_ods_ois(pred_dir, gt_dir)
+        print(f"ODS F1-score: {ods_f1:.3f}")
+        print(f"OIS F1-score: {ois_f1:.3f}")
+
+        ap_score = calculate_ap(pred_dir, gt_dir, distance=2)
+        print(f"Average Precision (AP): {ap_score:.3f}")
         return
 
     criterion = bdcn_loss2 # hed_loss2 #bdcn_loss2

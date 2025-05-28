@@ -142,9 +142,9 @@ def dataset_info(dataset_name, is_linux=True):
                          'yita': 0.3},
             'BIPED': {'img_height': 720,  # 720
                       'img_width': 1280,  # 1280
-                      'test_list': 'test_pair.lst',
+                      'test_list': 'test_rgb.lst',
                       'train_list': 'train_rgb.lst',
-                      'data_dir': r'C:\Codes\DexiNed\datasets\BIPED',  # WIN: '../.../dataset/BIPED/edges'
+                      'data_dir': r'C:\Codes\DexiNed\datasets\BIPED\edges',  # WIN: '../.../dataset/BIPED/edges'
                       'yita': 0.5},
             'CLASSIC': {'img_height': 512,
                         'img_width': 512,
@@ -205,9 +205,11 @@ class TestDataset(Dataset):
             list_name = os.path.join(self.data_root, self.test_list)
             if self.test_data.upper()=='BIPED':
 
-                with open(list_name) as f:
-                    files = json.load(f)
-                for pair in files:
+                with open(list_name, 'r') as f:
+                    files = f.readlines()
+                files = [line.strip() for line in files]
+                pairs = [line.split() for line in files]
+                for pair in pairs:
                     tmp_img = pair[0]
                     tmp_gt = pair[1]
                     sample_indices.append(
