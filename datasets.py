@@ -268,6 +268,8 @@ class TestDataset(Dataset):
         return dict(images=image, labels=label, file_names=file_name, image_shape=im_shape)
 
     def transform(self, img, gt):
+        '''
+        '''
         # gt[gt< 51] = 0 # test without gt discrimination
         if self.test_data == "CLASSIC":
             img_height = self.img_height

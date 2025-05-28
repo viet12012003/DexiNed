@@ -283,7 +283,7 @@ def parse_args():
 
     parser.add_argument('--epochs',
                         type=int,
-                        default=17,
+                        default=10,
                         metavar='N',
                         help='Number of training epochs (default: 25).')
     parser.add_argument('--lr',
@@ -426,20 +426,17 @@ def calculate_ap(pred_folder, gt_folder, thresholds=np.linspace(0.0, 1.0, 100), 
 
 def main(args):
     """Main function."""
+    tb_writer = None
 
     print(f"Number of GPU's available: {torch.cuda.device_count()}")
     print(f"Pytorch version: {torch.__version__}")
 
-    # Tensorboard summary writer
 
-    tb_writer = None
     training_dir = os.path.join(args.output_dir,args.train_data)     # output_dir la duong dan toi checkpoints,
                                                                      # train_data la DATASET_NAME[0] = BIPED
     os.makedirs(training_dir,exist_ok=True)
     checkpoint_path = os.path.join(args.output_dir, args.train_data, args.checkpoint_data)  # checkpoint_data la 10/10_model.pth
     if args.tensorboard and not args.is_testing:
-        from torch.utils.tensorboard import SummaryWriter # for torch 1.4 or greather
-        tb_writer = SummaryWriter(log_dir=training_dir)
         # saving Model training settings
         training_notes = ['DexiNed, Xavier Normal Init, LR= ' + str(args.lr) + ' WD= '
                           + str(args.wd) + ' image size = ' + str(args.img_width)
@@ -515,15 +512,16 @@ def main(args):
         # gt_dir = r"C:\Codes\DexiNed\result\BIPED2BSDS\label"
 
         # Danh gia mang DexiNed tren data filter
-        pred_dir = r"C:\Codes\DexiNed\result\BSDS_filtered\Roberts"
+        pred_dir = r"C:\Codes\DexiNed\result\BIPED2BSDS\fused"
         gt_dir = r"C:\Codes\DexiNed\result\BIPED2BSDS\label"
 
-        ods_f1, threshold, ois_f1 = calculate_ods_ois(pred_dir, gt_dir, distance=10)
-        # ods_f1, threshold, ois_f1 = calculate_ods_ois(pred_dir, gt_dir)
+        # ods_f1, threshold, ois_f1 = calculate_ods_ois(pred_dir, gt_dir, distance=2)
+        ods_f1, threshold, ois_f1 = calculate_ods_ois(pred_dir, gt_dir)
         print(f"ODS F1-score: {ods_f1:.3f}")
         print(f"OIS F1-score: {ois_f1:.3f}")
 
-        ap_score = calculate_ap(pred_dir, gt_dir, distance=2)
+        # ap_score = calculate_ap(pred_dir, gt_dir, distance=2)
+        ap_score = calculate_ap(pred_dir, gt_dir)
         print(f"Average Precision (AP): {ap_score:.3f}")
         return
 
