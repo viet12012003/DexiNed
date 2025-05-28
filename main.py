@@ -21,8 +21,6 @@ from utils import (image_normalization, save_image_batch_to_disk,
 IS_LINUX = True if platform.system()=="Linux" else False
 def train_one_epoch(epoch, dataloader, model, criterion, optimizer, device,
                     log_interval_vis, tb_writer, args=None):
-    imgs_res_folder = os.path.join(args.output_dir, 'current_res')
-    os.makedirs(imgs_res_folder,exist_ok=True)
 
     # Put model in training mode
     model.train()
@@ -33,16 +31,16 @@ def train_one_epoch(epoch, dataloader, model, criterion, optimizer, device,
     #             [0.1, 1.], [0.1, 1.], [0.1, 1.],
     #             [0.01, 4.]]  # for cats loss
     loss_avg =[]
-    for batch_id, sample_batched in enumerate(dataloader):
+    for batch_id, sample_batched in enumerate(dataloader): # tai du lieu tu dataset_val theo tung anh
         images = sample_batched['images'].to(device)  # BxCxHxW
         labels = sample_batched['labels'].to(device)  # BxHxW
         preds_list = model(images)
         # loss = sum([criterion(preds, labels, l_w, device) for preds, l_w in zip(preds_list, l_weight)])  # cats_loss
         loss = sum([criterion(preds, labels,l_w) for preds, l_w in zip(preds_list,l_weight)]) # bdcn_loss
         # loss = sum([criterion(preds, labels) for preds in preds_list])  #HED loss, rcf_loss
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        optimizer.zero_grad() #Dat gradient cua tat ca tham so ve 0
+        loss.backward() # dung thuat toan backpropagation tham truyen nguoc
+        optimizer.step() # cap nhat cac tham so cua model
         loss_avg.append(loss.item())
         if epoch==0 and (batch_id==100 and tb_writer is not None):
             tmp_loss = np.array(loss_avg).mean()
@@ -87,14 +85,12 @@ def train_one_epoch(epoch, dataloader, model, criterion, optimizer, device,
                                    img_test,
                                    (x, y),
                                    font, font_size, font_color, font_thickness, cv2.LINE_AA)
-            cv2.imwrite(os.path.join(imgs_res_folder, 'results.png'), vis_imgs)
     loss_avg = np.array(loss_avg).mean()
     return loss_avg
 
 
 def validate_one_epoch(epoch, dataloader, model, device, output_dir, arg=None):
     # XXX This is not really validation, but testing
-
     # Put model in eval mode
     model.eval()
 
@@ -202,7 +198,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='DexiNed trainer.')
     parser.add_argument('--choose_test_data',
                         type=int,
-                        default=0,
+                        default=1,
                         help='Already set the dataset for testing choice: 0 - 8')
     # ----------- test -------0--
 
@@ -214,8 +210,8 @@ def parse_args():
 
     # Training settings
     TRAIN_DATA = DATASET_NAMES[0] # BIPED=0, MDBD=6
-    train_inf = dataset_info(TRAIN_DATA, is_linux=IS_LINUX)
-    train_dir = train_inf['data_dir']
+    train_inf = dataset_info(TRAIN_DATA, is_linux=IS_LINUX) # duong dan toi dataset train
+    train_dir = train_inf['data_dir'] # duong dan toi thu muc dataset train
 
 
     # Data parameters
@@ -550,46 +546,16 @@ def main(args):
                 for param_group in optimizer.param_groups:
                     param_group['lr'] = lr2
 
-        output_dir_epoch = os.path.join(args.output_dir,args.train_data, str(epoch))
-        img_test_dir = os.path.join(output_dir_epoch, args.test_data + '_res')
-        os.makedirs(output_dir_epoch,exist_ok=True)
-        os.makedirs(img_test_dir,exist_ok=True)
-        validate_one_epoch(epoch,
-                           dataloader_val,
-                           model,
-                           device,
-                           img_test_dir,
-                           arg=args)
-
-        avg_loss =train_one_epoch(epoch,
-                        dataloader_train,
-                        model,
-                        criterion,
-                        optimizer,
-                        device,
-                        args.log_interval_vis,
-                        tb_writer,
-                        args=args)
-        validate_one_epoch(epoch,
-                           dataloader_val,
-                           model,
-                           device,
-                           img_test_dir,
-                           arg=args)
-
-        # Save model after end of every epoch
-        torch.save(model.module.state_dict() if hasattr(model, "module") else model.state_dict(),
-                   os.path.join(output_dir_epoch, '{0}_model.pth'.format(epoch)))
-        if tb_writer is not None:
-            tb_writer.add_scalar('loss',
-                                 avg_loss,
-                                 epoch+1)
         print('Current learning rate> ', optimizer.param_groups[0]['lr'])
     num_param = count_parameters(model)
     print('-------------------------------------------------------')
     print('DexiNed, # of Parameters:')
     print(num_param)
     print('-------------------------------------------------------')
+
+    output_dir = rf"C:\Codes\DexiNed\checkpoints/BIPED/{args.epochs}"
+    model_save_path = os.path.join(output_dir, '/10_model.pth')
+    torch.save(model.state_dict(), model_save_path)
 
 if __name__ == '__main__':
     args = parse_args()

@@ -23,11 +23,11 @@ def bdcn_loss2(inputs, targets, l_weight=1.1):
     targets = targets.long()
     # mask = (targets > 0.1).float()
     mask = targets.float()
-    num_positive = torch.sum((mask > 0.0).float()).float() # >0.1
-    num_negative = torch.sum((mask <= 0.0).float()).float() # <= 0.1
+    num_positive = torch.sum((mask > 0.0).float()).float() # >0.1 #bien
+    num_negative = torch.sum((mask <= 0.0).float()).float() # <= 0.1 # nen
 
-    mask[mask > 0.] = 1.0 * num_negative / (num_positive + num_negative) #0.1
-    mask[mask <= 0.] = 1.1 * num_positive / (num_positive + num_negative)  # before mask[mask <= 0.1]
+    mask[mask > 0.] = 1.0 * num_negative / (num_positive + num_negative) #0.1 bien
+    mask[mask <= 0.] = 1.1 * num_positive / (num_positive + num_negative)  # before mask[mask <= 0.1]  nen`
     # mask[mask == 2] = 0
     inputs= torch.sigmoid(inputs)
     cost = torch.nn.BCELoss(mask, reduction='none')(inputs, targets.float())
