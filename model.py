@@ -83,6 +83,8 @@ class _DenseBlock(nn.Sequential):
 
 
 class UpConvBlock(nn.Module):
+    '''Lay dac trung tu cac tang truoc, phong to anh de dau ra co kich thuoc bang voi dau vao
+    So chieu giam ve 1'''
     def __init__(self, in_features, up_scale):
         super(UpConvBlock, self).__init__()
         self.up_factor = 2
@@ -114,6 +116,7 @@ class UpConvBlock(nn.Module):
 
 
 class SingleConvBlock(nn.Module):
+    '''Dung 1 lop tich chap 1x1'''
     def __init__(self, in_features, out_features, stride,
                  use_bs=True
                  ):
@@ -131,6 +134,7 @@ class SingleConvBlock(nn.Module):
 
 
 class DoubleConvBlock(nn.Module):
+    '''Dung 2 lop tich chap 3x3 lien tiep'''
     def __init__(self, in_features, mid_features,
                  out_features=None,
                  stride=1,

@@ -504,12 +504,12 @@ def main(args):
         # gt_dir = r"C:\Codes\DexiNed\result\BIPED2BIPED\label"
 
         # Danh gia mang DexiNed tren data BSDS
-        # pred_dir = r"C:\Codes\DexiNed\result\BIPED2BSDS\fused"
-        # gt_dir = r"C:\Codes\DexiNed\result\BIPED2BSDS\label"
-
-        # Danh gia mang DexiNed tren data filter
         pred_dir = r"C:\Codes\DexiNed\result\BIPED2BSDS\fused"
         gt_dir = r"C:\Codes\DexiNed\result\BIPED2BSDS\label"
+
+        # Danh gia mang DexiNed tren data filter
+        # pred_dir = r"C:\Codes\DexiNed\result\BIPED2BSDS\fused"
+        # gt_dir = r"C:\Codes\DexiNed\result\BIPED2BSDS\label"
 
         # ods_f1, threshold, ois_f1 = calculate_ods_ois(pred_dir, gt_dir, distance=2)
         ods_f1, threshold, ois_f1 = calculate_ods_ois(pred_dir, gt_dir)
